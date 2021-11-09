@@ -49,7 +49,7 @@ class History:
         self.save()
 
     def failure(self, error: str):
-        if type(self.current_event) is not Failure:
+        if type(self.current_event) is not Failure or self.current_event.error != error:
             self._notify(error)
             self.current_event = Failure(error=error, start=time.time())
             self.failures.append(self.current_event)

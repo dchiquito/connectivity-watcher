@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import InitVar, asdict, dataclass, field
 from datetime import datetime
 import json
 import time
@@ -8,31 +7,16 @@ from typing import Optional
 import notify2
 import requests
 
-
-@dataclass
-class Success:
-    start: float
-    end: Optional[float] = None
+from models import Success, Failure, History
 
 
-@dataclass
-class Failure:
-    error: str
-    start: float
-    end: Optional[float] = None
-
-
-@dataclass
-class History:
-    successes: list[Success] = field(default_factory=list)
-    failures: list[Failure] = field(default_factory=list)
-    current_event: Optional[Success | Failure] = None
-    file_path: InitVar[Optional[str]] = None
-
-    def __post_init__(self, file_path: Optional[str] = None, **kwargs):
+class Watcher:
+    def __init__(self, file_path: Optional[str] = None):
         if file_path is None:
             file_path = f"data/{datetime.now().isoformat()[:-7]}.json"
         self.file_path = file_path
+        self.history = History()
+        self.current_event = None
 
     def _notify(self, message: str):
         # We don't want to send a notification on startup
@@ -41,43 +25,42 @@ class History:
             notify2.Notification(message).show()
 
     def success(self):
+        now = time.time()
         if type(self.current_event) is not Success:
-            self._notify("Connectivity restored")
-            self.current_event = Success(start=time.time())
-            self.successes.append(self.current_event)
-        self.current_event.end = time.time()
-        self.save()
+            if self.current_event is not None:
+                self._notify("Connectivity restored")
+                self.current_event.end = now
+            self.current_event = Success(start=now)
+            self.history.successes.append(self.current_event)
+        self.current_event.end = now
+        self.history.save(self.file_path)
 
     def failure(self, error: str):
-        if type(self.current_event) is not Failure or self.current_event.error != error:
-            self._notify(error)
-            self.current_event = Failure(error=error, start=time.time())
-            self.failures.append(self.current_event)
-        self.current_event.end = time.time()
-        self.save()
-
-    @classmethod
-    def load(self) -> History:
-        with open(self.file_path, "r") as f:
-            return History(**json.load(f))
-
-    def save(self):
-        with open(self.file_path, "w") as f:
-            json.dump(asdict(self), f)
+        now = time.time()
+        if type(self.current_event) is not Failure or (
+            self.current_event is not None and self.current_event.error != error
+        ):
+            if self.current_event is not None:
+                self._notify(error)
+                self.current_event.end = now
+            self.current_event = Failure(error=error, start=now)
+            self.history.failures.append(self.current_event)
+        self.current_event.end = now
+        self.history.save(self.file_path)
 
 
 def main():
     notify2.init("Connectionator")
-    history = History()
+    watcher = Watcher()
     try:
         while True:
             try:
                 requests.get("http://google.com", timeout=3)
-                history.success()
+                watcher.success()
             except requests.exceptions.ConnectTimeout:
-                history.failure("ConnectTimeout")
+                watcher.failure("ConnectTimeout")
             except requests.exceptions.ConnectionError:
-                history.failure("ConnectionError")
+                watcher.failure("ConnectionError")
             time.sleep(5)
     except KeyboardInterrupt:
         # No need to throw exception traces, just exit silently

@@ -24,9 +24,12 @@ class History:
     failures: list[Failure] = field(default_factory=list)
 
     @classmethod
-    def load(file_path: str) -> History:
+    def load(cls, file_path: str) -> History:
         with open(file_path, "r") as f:
-            return History(**json.load(f))
+            data = json.load(f)
+            successes = [Success(**success) for success in data["successes"]]
+            failures = [Failure(**failure) for failure in data["failures"]]
+            return History(successes=successes, failures=failures)
 
     def save(self, file_path: str):
         with open(file_path, "w") as f:

@@ -3,72 +3,78 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 import json
 import time
+from typing import Optional
 
 import notify2
 import requests
 
+
 @dataclass
 class Success:
-    time: float
-    duration: float
+    start: float
+    end: Optional[float] = None
+
 
 @dataclass
 class Failure:
-    time: float
     error: str
+    start: float
+    end: Optional[float] = None
+
 
 @dataclass
 class History:
     successes: list[Success] = field(default_factory=list)
     failures: list[Failure] = field(default_factory=list)
+    current_event: Optional[Success | Failure] = None
 
-    def success(self, start: float, end: float):
-        self.successes.append(Success(time=start, duration=end-start))
+    def _notify(self, message: str):
+        # We don't want to send a notification on startup
+        if self.current_event is not None:
+            print(datetime.now().isoformat(), message)
+            notify2.Notification(message).show()
 
-    def failure(self, start: float, error: str):
-        self.failures.append(Failure(time=start, error=error))
+    def success(self):
+        if type(self.current_event) is not Success:
+            self._notify("Connectivity restored")
+            self.current_event = Success(start=time.time())
+            self.successes.append(self.current_event)
+        self.current_event.end = time.time()
 
-def load_history(name: str) -> History:
-    with open(name, 'r') as f:
-        return History(**json.load(f))
+    def failure(self, error: str):
+        if type(self.current_event) is not Failure:
+            self._notify(error)
+            self.current_event = Failure(error=error, start=time.time())
+            self.failures.append(self.current_event)
+        self.current_event.end = time.time()
 
-def save_history(name: str, history: History):
-    with open(name, 'w') as f:
-        json.dump(asdict(history), f)
+    @classmethod
+    def load(name: str) -> History:
+        with open(name, "r") as f:
+            return History(**json.load(f))
+
+    def save(self, name: str):
+        with open(name, "w") as f:
+            json.dump(asdict(self), f)
+
 
 def main():
-    notify2.init('Connectionator')
-    file_name = datetime.now().isoformat()[:-7] + '.json'
+    notify2.init("Connectionator")
+    file_name = f"data/{datetime.now().isoformat()[:-7]}.json"
     history = History()
-    failing = False
     try:
         while True:
-            start = time.time()
             try:
-                requests.get('http://google.com', timeout=3)
+                requests.get("http://google.com", timeout=3)
+                history.success()
             except requests.exceptions.ConnectTimeout:
-                if not failing:
-                    print(datetime.now().isoformat(),'ConnectTimeout')
-                    notify2.Notification('ConnectTimeout', 'ConnectTimeout').show()
-                    failing = True
-                history.failure(start, 'ConnectTimeout')
+                history.failure("ConnectTimeout")
             except requests.exceptions.ConnectionError:
-                if not failing:
-                    print(datetime.now().isoformat(),'ConnectionError')
-                    notify2.Notification('ConnectionError', 'ConnectionError').show()
-                    failing = True
-                history.failure(start, 'ConnectionError')
-            else:
-                if failing:
-                    print(datetime.now().isoformat(), 'Connection restored')
-                    notify2.Notification('Connection restored', 'Connection restored').show()
-                    failing = False
-                end = time.time()
-                history.success(start, end)
+                history.failure("ConnectionError")
             time.sleep(5)
     except KeyboardInterrupt:
-        print('done!')
-        save_history(file_name, history)
+        history.save(file_name)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

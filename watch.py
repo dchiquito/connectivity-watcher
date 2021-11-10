@@ -58,7 +58,9 @@ def main():
                 requests.get("http://google.com", timeout=3)
                 watcher.success()
             except requests.exceptions.RequestException as e:
-                watcher.failure(repr(e))
+                raw_error = repr(e)
+                sanitized_error = raw_error.replace("0x[0-9a-f]+", "0x0000")
+                watcher.failure(sanitized_error)
             time.sleep(5)
     except KeyboardInterrupt:
         # No need to throw exception traces, just exit silently

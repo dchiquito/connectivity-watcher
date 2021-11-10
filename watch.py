@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
-import json
 import time
+import re
 from typing import Optional
 
 import notify2
@@ -59,7 +59,7 @@ def main():
                 watcher.success()
             except requests.exceptions.RequestException as e:
                 raw_error = repr(e)
-                sanitized_error = raw_error.replace("0x[0-9a-f]+", "0x0000")
+                sanitized_error = re.sub("0x[0-9a-f]+", "0x0000", raw_error)
                 watcher.failure(sanitized_error)
             time.sleep(5)
     except KeyboardInterrupt:

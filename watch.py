@@ -57,10 +57,8 @@ def main():
             try:
                 requests.get("http://google.com", timeout=3)
                 watcher.success()
-            except requests.exceptions.ConnectTimeout:
-                watcher.failure("ConnectTimeout")
-            except requests.exceptions.ConnectionError:
-                watcher.failure("ConnectionError")
+            except requests.exceptions.RequestException as e:
+                watcher.failure(repr(e))
             time.sleep(5)
     except KeyboardInterrupt:
         # No need to throw exception traces, just exit silently
